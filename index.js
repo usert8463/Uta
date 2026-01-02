@@ -29,10 +29,12 @@ app.get("/chatbot", async (req, res) => {
   }
 
   let timeout;
+  let resolveFunc;
   const responsePromise = new Promise(resolve => {
+    resolveFunc = resolve;
     queue.push(resolve);
     timeout = setTimeout(() => {
-      const idx = queue.indexOf(resolve);
+      const idx = queue.indexOf(resolveFunc);
       if (idx !== -1) queue.splice(idx, 1);
       if (queue.length === 0) waiters.delete(user_id);
       res.json({ text: null, timeout: true });
@@ -50,7 +52,7 @@ app.get("/chatbot", async (req, res) => {
 
   } catch (err) {
     clearTimeout(timeout);
-    const idx = queue.indexOf(resolve => resolve === responsePromise);
+    const idx = queue.indexOf(resolveFunc);
     if (idx !== -1) queue.splice(idx, 1);
     if (queue.length === 0) waiters.delete(user_id);
     return res.json({ status: 500 });
@@ -63,6 +65,5 @@ const PORT = process.env.PORT || 8000;
 app.listen(PORT, () => console.log("API online on port " + PORT));
 
 setInterval(() => {
-    console.log("Ping! Server alive at " + new Date().toLocaleTimeString());
-  }, 30000);
-});
+  console.log("Ping! Server alive at " + new Date().toLocaleTimeString());
+}, 30000);
