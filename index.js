@@ -2,50 +2,67 @@ const express = require("express");
 const axios = require("axios");
 const app = express();
 
-const messageCache = {};
+const waiters = new Map();
 
 app.get("/incoming", (req, res) => {
   const { user_id, text } = req.query;
-  if (!user_id || !text) return res.json({ status: 400, error: "user_id ou text manquant" });
+  if (!user_id || !text) return res.json({ status: 400 });
 
-  if (!messageCache[user_id]) messageCache[user_id] = [];
-  messageCache[user_id].push({
-    text,
-    timestamp: Date.now()
-  });
+  const queue = waiters.get(user_id);
+  if (queue && queue.length > 0) {
+    const resolve = queue.shift();
+    resolve(text);
+    if (queue.length === 0) waiters.delete(user_id);
+  }
 
   res.json({ status: 200 });
 });
 
-app.get("/response", (req, res) => {
-  const { user_id } = req.query;
-  if (!user_id) return res.json({ status: 400, error: "user_id manquant" });
+app.get("/chatbot", async (req, res) => {
+  const { user_id, text } = req.query;
+  if (!user_id || !text) return res.json({ status: 400 });
 
-  const now = Date.now();
-
-  for (const uid in messageCache) {
-    messageCache[uid] = messageCache[uid].filter(msg => now - msg.timestamp <= 5 * 60 * 1000);
-    if (messageCache[uid].length === 0) delete messageCache[uid];
+  let queue = waiters.get(user_id);
+  if (!queue) {
+    queue = [];
+    waiters.set(user_id, queue);
   }
 
-  if (messageCache[user_id] && messageCache[user_id].length > 0) {
-    const message = messageCache[user_id].pop();
-    if (messageCache[user_id].length === 0) delete messageCache[user_id];
-    return res.json({ text: message.text });
-  } else {
-    return res.json({ text: null });
+  let timeout;
+  const responsePromise = new Promise(resolve => {
+    queue.push(resolve);
+    timeout = setTimeout(() => {
+      const idx = queue.indexOf(resolve);
+      if (idx !== -1) queue.splice(idx, 1);
+      if (queue.length === 0) waiters.delete(user_id);
+      res.json({ text: null, timeout: true });
+    }, 15000);
+  });
+
+  try {
+    await axios.get("https://c1877.webapi.ai/cmc/user_message", {
+      params: { auth_token: "25qsdt8c", user_id, text }
+    });
+
+    const reply = await responsePromise;
+    clearTimeout(timeout);
+    return res.json({ text: reply });
+
+  } catch (err) {
+    clearTimeout(timeout);
+    const idx = queue.indexOf(resolve => resolve === responsePromise);
+    if (idx !== -1) queue.splice(idx, 1);
+    if (queue.length === 0) waiters.delete(user_id);
+    return res.json({ status: 500 });
   }
 });
 
-app.get("/", (req, res) => {
-  res.json({ status: "API is online" });
-});
+app.get("/", (_, res) => res.json({ status: "API online" }));
 
 const PORT = process.env.PORT || 8000;
-app.listen(PORT, () => {
-  console.log("API online on port " + PORT);
+app.listen(PORT, () => console.log("API online on port " + PORT));
 
-  setInterval(() => {
+setInterval(() => {
     console.log("Ping! Server alive at " + new Date().toLocaleTimeString());
   }, 30000);
 });
