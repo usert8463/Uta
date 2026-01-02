@@ -28,16 +28,21 @@ app.get("/chatbot", async (req, res) => {
     waiters.set(user_id, queue);
   }
 
-  let timeout;
   let resolveFunc;
+  let resSent = false;
+
   const responsePromise = new Promise(resolve => {
     resolveFunc = resolve;
     queue.push(resolve);
-    timeout = setTimeout(() => {
+
+    setTimeout(() => {
       const idx = queue.indexOf(resolveFunc);
       if (idx !== -1) queue.splice(idx, 1);
       if (queue.length === 0) waiters.delete(user_id);
-      res.json({ text: null, timeout: true });
+      if (!resSent) {
+        resSent = true;
+        res.json({ text: null, timeout: true });
+      }
     }, 15000);
   });
 
@@ -47,15 +52,19 @@ app.get("/chatbot", async (req, res) => {
     });
 
     const reply = await responsePromise;
-    clearTimeout(timeout);
-    return res.json({ text: reply });
+    if (!resSent) {
+      resSent = true;
+      res.json({ text: reply });
+    }
 
   } catch (err) {
-    clearTimeout(timeout);
     const idx = queue.indexOf(resolveFunc);
     if (idx !== -1) queue.splice(idx, 1);
     if (queue.length === 0) waiters.delete(user_id);
-    return res.json({ status: 500 });
+    if (!resSent) {
+      resSent = true;
+      res.json({ status: 500 });
+    }
   }
 });
 
@@ -67,3 +76,4 @@ app.listen(PORT, () => console.log("API online on port " + PORT));
 setInterval(() => {
   console.log("Ping! Server alive at " + new Date().toLocaleTimeString());
 }, 30000);
+
