@@ -47,8 +47,8 @@ app.get("/chatbot", async (req, res) => {
   });
 
   try {
-    await axios.get("https://c1916.webapi.ai/cmc/user_message", {
-      params: { auth_token: "npk5w6us", user_id, text }
+    await axios.get("https://c1946.webapi.ai/cmc/user_message", {
+      params: { auth_token: "qhcrjm09", user_id, text }
     });
 
     const reply = await responsePromise;
